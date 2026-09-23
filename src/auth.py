@@ -1,14 +1,12 @@
 import numpy as np
+
 from src.model import NeuroSignatureModel
 
 
 class NeuroAuthSystem:
     """
-    EEG-based neuro-signature authentication system.
-
-    The system learns the distribution of enrolled EEG feature
-    samples and verifies whether a new sample is consistent with
-    that learned neuro-signature profile.
+    EEG neuro-signature verification system using
+    one-class anomaly detection.
     """
 
     def __init__(
@@ -23,11 +21,12 @@ class NeuroAuthSystem:
             random_state=random_state
         )
 
+        self.user_id = None
         self.enrolled = False
 
     def enroll_user(self, user_id, eeg_samples):
         """
-        Enroll a user using multiple EEG feature samples.
+        Create a neuro-signature profile from enrollment samples.
         """
 
         eeg_samples = np.asarray(
@@ -42,7 +41,7 @@ class NeuroAuthSystem:
 
         if len(eeg_samples) < 10:
             raise ValueError(
-                "At least 10 enrollment samples are recommended."
+                "At least 10 EEG samples are required for enrollment."
             )
 
         self.model.train(eeg_samples)
@@ -54,13 +53,8 @@ class NeuroAuthSystem:
 
     def authenticate(self, test_sample):
         """
-        Verify a new EEG feature sample against the enrolled
-        neuro-signature profile.
-
-        Returns:
-            authenticated: True if the sample is consistent
-                           with the learned profile.
-            score: anomaly decision score.
+        Verify a new EEG feature sample against
+        the learned neuro-signature profile.
         """
 
         if not self.enrolled:
@@ -74,7 +68,10 @@ class NeuroAuthSystem:
         ).reshape(1, -1)
 
         prediction = self.model.predict(test_sample)[0]
-        score = self.model.decision_score(test_sample)[0]
+
+        score = self.model.decision_score(
+            test_sample
+        )[0]
 
         authenticated = prediction == 1
 

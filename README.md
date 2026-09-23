@@ -1,12 +1,12 @@
 # Neuro-Signature-Based Authentication
 
-An EEG-based biometric authentication prototype that creates a reference neuro-signature from EEG-derived features and verifies new samples using cosine similarity.
+An EEG-based biometric authentication prototype that learns a neuro-signature profile from EEG-derived features and performs similarity-independent anomaly-based verification using Isolation Forest.
 
 ## Overview
 
-Traditional authentication systems commonly rely on passwords, PINs, or physical biometrics. This project explores EEG-based biometric authentication by using brainwave-derived features as a potential authentication signal.
+Traditional authentication systems commonly rely on passwords, PINs, or physical biometrics. This project explores EEG-based biometric authentication by using brainwave-derived features as an authentication signal.
 
-The system processes pre-extracted EEG features, creates a reference neuro-signature during enrollment, and compares new EEG feature samples against the stored signature.
+The system processes pre-extracted EEG features, learns the distribution of enrollment samples, and evaluates new EEG feature samples using one-class anomaly detection.
 
 ## System Architecture
 
@@ -20,34 +20,35 @@ Feature Loading & Cleaning
 Feature Standardization
         |
         v
-Neuro-Signature Enrollment
+Enrollment Samples
         |
         v
-Reference EEG Template
+Isolation Forest Model
+        |
+        v
+Learned Neuro-Signature Profile
         |
         v
 New EEG Feature Sample
         |
         v
-Cosine Similarity
-        |
-        v
-Similarity Threshold
+Anomaly Detection
         |
    +----+----+
    |         |
    v         v
-AUTHENTICATED  REJECTED
+IN-PROFILE   ANOMALOUS
 ```
 
 ## Key Features
 
-* EEG-derived biometric authentication
-* Feature cleaning and preprocessing
+* EEG-derived biometric authentication prototype
+* Pre-extracted EEG feature processing
+* Missing and infinite value handling
 * Feature standardization using StandardScaler
-* Neuro-signature template generation
-* Cosine similarity-based verification
-* Configurable authentication threshold
+* One-class anomaly detection
+* Isolation Forest-based verification
+* Configurable contamination parameter
 * Modular Python implementation
 * Reproducible project structure
 
@@ -88,61 +89,100 @@ neuro-signature-based-authentication/
 
 The system loads the pre-extracted EEG feature dataset from CSV format.
 
-The dataset contains multiple categories of EEG-derived features, including statistical, FFT, covariance, eigenvalue, entropy, and correlation features.
+The dataset contains multiple categories of EEG-derived numerical features, including statistical, FFT, covariance, eigenvalue, entropy, and correlation features.
 
 ### 2. Feature Preprocessing
 
 The preprocessing pipeline:
 
-* Removes the label column from the feature matrix
+* Removes the `label` column from the feature matrix
 * Keeps numerical EEG features
 * Replaces infinite values
 * Handles missing values using feature medians
-* Standardizes the feature vectors
+* Standardizes the feature vectors using `StandardScaler`
 
 ### 3. Neuro-Signature Enrollment
 
-During enrollment, multiple EEG feature samples are used to create a reference template.
+During enrollment, 80% of the available EEG feature samples are used to learn the reference neuro-signature profile.
 
-The reference template is calculated from the enrollment samples and stored for subsequent verification.
+The Isolation Forest model learns the distribution of the enrollment samples.
 
-### 4. Authentication
+### 4. Verification
 
-A new EEG feature sample is compared with the enrolled template using cosine similarity.
+A new EEG feature sample is passed to the trained model.
 
-If the similarity score meets the configured threshold, the sample is accepted.
+The model produces:
 
-Otherwise, the authentication attempt is rejected.
+* `IN-PROFILE` — the sample is considered consistent with the learned distribution
+* `ANOMALOUS` — the sample is considered an outlier
 
-## Authentication Formula
+The model also produces a decision score.
 
-Cosine similarity measures the similarity between two feature vectors based on their orientation in feature space.
+Higher decision scores indicate greater consistency with the learned training distribution.
+
+## Machine Learning Approach
+
+This project uses **Isolation Forest** for one-class anomaly detection.
+
+Isolation Forest is useful when the available dataset does not contain separate positive and negative identity classes.
+
+The model learns patterns from the available enrollment samples and identifies samples that appear unusual relative to that learned distribution.
 
 ```text
-similarity = cosine(reference_signature, test_signature)
+Enrollment EEG Features
+          |
+          v
+   Isolation Forest
+          |
+          v
+ Learned EEG Profile
+          |
+          v
+New EEG Feature Sample
+          |
+          v
+  Anomaly Detection
+          |
+     +----+----+
+     |         |
+     v         v
+IN-PROFILE   ANOMALOUS
 ```
+
+## Model Configuration
 
 The current prototype uses:
 
 ```text
-Threshold = 0.90
+n_estimators = 200
+contamination = 0.05
+random_state = 42
 ```
 
-This value is a configurable prototype setting and has not been established as a security-standard threshold.
+The `contamination` parameter represents the expected proportion of anomalous observations used by the model.
+
+These settings are prototype parameters and have not been established as biometric security standards.
 
 ## Dataset
 
 The current project uses a pre-extracted EEG feature dataset.
 
-The dataset contains EEG-derived numerical features rather than raw EEG signal recordings.
+Dataset characteristics:
 
-The current dataset contains a single `POSITIVE` label class. Therefore, this version of the project demonstrates **neuro-signature verification** rather than multi-user identity classification.
+```text
+Samples: 708
+EEG-derived features: 2,548
+Label column: label
+Available label: POSITIVE
+```
+
+The dataset contains EEG-derived numerical features rather than raw EEG signal recordings.
 
 ## Important Limitation
 
-The current dataset does not provide multiple subject/user identifiers.
+The current dataset contains only a single label class and does not provide multiple subject/user identifiers or separate impostor samples.
 
-Therefore, this project should not be interpreted as a validated multi-user biometric identification system.
+Therefore, this project should **not** be interpreted as a validated multi-user biometric identification system.
 
 The current implementation demonstrates the technical workflow for:
 
@@ -150,13 +190,18 @@ The current implementation demonstrates the technical workflow for:
 EEG Features
      |
      v
-Reference Neuro-Signature
+Enrollment Profile
      |
      v
-Similarity-Based Verification
+One-Class Anomaly Detection
+     |
+     v
+Verification Decision
 ```
 
-A future version can use subject-labelled EEG data to evaluate multi-user identification and authentication performance.
+The `user_001` identifier used by the demo is a conceptual enrollment identifier and does not represent a verified real-world subject identity.
+
+A future version should use subject-labelled EEG data containing multiple users and genuine/impostor samples to properly evaluate biometric authentication performance.
 
 ## Security Considerations
 
@@ -169,23 +214,23 @@ A production implementation should consider:
 * Template protection
 * Replay-attack resistance
 * Liveness detection
-* Threshold calibration
+* Threshold and model calibration
 * False Acceptance Rate (FAR)
 * False Rejection Rate (FRR)
 * Equal Error Rate (EER)
 * Secure user enrollment
-* Privacy and consent requirements
+* Privacy and informed consent requirements
 
 ## Future Enhancements
 
 * Streamlit authentication dashboard
 * Subject-labelled multi-user EEG dataset
-* Advanced feature selection
 * PCA-based dimensionality reduction
-* Authentication threshold calibration
+* Advanced feature selection
+* Model and parameter calibration
 * FAR/FRR evaluation
 * ROC curve analysis
-* EEG template encryption
+* EEG template protection
 * Liveness detection
 * Real-time EEG authentication
 * Secure API integration
@@ -213,7 +258,7 @@ Execute:
 python main.py
 ```
 
-The application loads the EEG feature dataset, preprocesses the features, creates a reference neuro-signature, and performs verification against test samples.
+The application loads the EEG feature dataset, preprocesses the features, trains the one-class neuro-signature model, and verifies new samples against the learned distribution.
 
 ## Example Output
 
@@ -227,23 +272,30 @@ EEG feature count: 2548
 Labels: ['POSITIVE']
 
 Feature preprocessing completed.
+Enrollment samples: 566
+Verification samples: 142
 
-User 'user_001' enrolled successfully.
+Neuro-signature profile created for 'user_001'.
 
-Authentication Results
-----------------------------------------
-Test Sample 1: AUTHENTICATED | Similarity: 0.XXXX
-Test Sample 2: AUTHENTICATED | Similarity: 0.XXXX
+Verification Results
+---------------------------------------------
+Sample 01: IN-PROFILE | Score: 0.0957
+Sample 02: IN-PROFILE | Score: 0.1226
+Sample 03: IN-PROFILE | Score: 0.1877
+...
 ```
 
-The similarity values depend on the dataset and preprocessing performed during execution.
+The exact decision scores may vary depending on the model configuration and execution environment.
 
 ## Disclaimer
 
-This project is an academic cybersecurity and machine-learning prototype. It is intended for educational and research purposes and should not be considered a production-ready biometric authentication system.
+This project is an academic cybersecurity and machine-learning prototype intended for educational and research purposes.
+
+It should not be considered a production-ready biometric authentication system.
 
 ## Author
 
-Bhuvanyaa S.
+**Bhuvanyaa S.**
+
 Cybersecurity Student
 B.Sc. Computer Science with Cybersecurity
