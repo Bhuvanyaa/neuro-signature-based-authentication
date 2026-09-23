@@ -1,75 +1,107 @@
-import joblib
+import os
 import numpy as np
-from sklearn.ensemble import IsolationForest
+
+from src.preprocessing import load_eeg_features, scale_features
+from src.auth import NeuroAuthSystem
 
 
-class NeuroSignatureModel:
-    """
-    One-class EEG neuro-signature model.
+DATA_PATH = "data/raw/emotions_positive_only.csv"
 
-    The model learns the distribution of available EEG feature samples
-    and identifies whether a new sample is consistent with that
-    learned neuro-signature profile.
-    """
 
-    def __init__(
-        self,
-        n_estimators=200,
-        contamination=0.05,
-        random_state=42
-    ):
-        self.model = IsolationForest(
-            n_estimators=n_estimators,
-            contamination=contamination,
-            random_state=random_state,
-            n_jobs=-1
+def main():
+    print("=" * 60)
+    print("Neuro-Signature-Based Authentication System")
+    print("=" * 60)
+
+    # 1. Check dataset
+    if not os.path.exists(DATA_PATH):
+        raise FileNotFoundError(
+            f"Dataset not found: {DATA_PATH}"
         )
 
-    def train(self, X):
-        """
-        Train the one-class neuro-signature model.
-        """
+    # 2. Load EEG-derived features
+    X, labels = load_eeg_features(DATA_PATH)
 
-        X = np.asarray(X, dtype=np.float64)
+    print(f"\nDataset samples: {X.shape[0]}")
+    print(f"EEG feature count: {X.shape[1]}")
+    print(f"Labels: {np.unique(labels)}")
 
-        if X.ndim != 2:
-            raise ValueError(
-                "Input features must be a 2-dimensional array."
-            )
+    # 3. Scale features
+    X_scaled, scaler = scale_features(X)
 
-        self.model.fit(X)
+    print("Feature preprocessing completed.")
 
-        return self
+    # 4. Split enrollment and verification samples
+    enrollment_size = int(len(X_scaled) * 0.80)
 
-    def predict(self, X):
-        """
-        Predict whether samples belong to the learned EEG profile.
+    enrollment_samples = X_scaled[:enrollment_size]
+    verification_samples = X_scaled[enrollment_size:]
 
-        Returns:
-            1  -> accepted / in-distribution
-           -1  -> rejected / anomalous
-        """
+    print(
+        f"Enrollment samples: {len(enrollment_samples)}"
+    )
+    print(
+        f"Verification samples: {len(verification_samples)}"
+    )
 
-        X = np.asarray(X, dtype=np.float64)
+    # 5. Create authentication system
+    auth_system = NeuroAuthSystem(
+        contamination=0.05,
+        n_estimators=200
+    )
 
-        return self.model.predict(X)
+    # 6. Enroll reference neuro-signature
+    user_id = "user_001"
 
-    def decision_score(self, X):
-        """
-        Return anomaly decision scores.
+    auth_system.enroll_user(
+        user_id,
+        enrollment_samples
+    )
 
-        Higher values indicate samples that are more consistent
-        with the learned training distribution.
-        """
+    print(
+        f"\nNeuro-signature profile created "
+        f"for '{user_id}'."
+    )
 
-        X = np.asarray(X, dtype=np.float64)
+    # 7. Verify samples
+    print("\nVerification Results")
+    print("-" * 45)
 
-        return self.model.decision_function(X)
+    accepted = 0
+    rejected = 0
 
-    def save(self, path):
-        """Save the trained model."""
-        joblib.dump(self.model, path)
+    for index, sample in enumerate(
+        verification_samples[:10],
+        start=1
+    ):
+        authenticated, score = auth_system.authenticate(
+            sample
+        )
 
-    def load(self, path):
-        """Load a trained model."""
-        self.model = joblib.load(path)
+        if authenticated:
+            status = "IN-PROFILE"
+            accepted += 1
+        else:
+            status = "ANOMALOUS"
+            rejected += 1
+
+        print(
+            f"Sample {index:02d}: "
+            f"{status} | "
+            f"Score: {score:.4f}"
+        )
+
+    print("\nSummary")
+    print("-" * 45)
+    print(f"Accepted / In-profile: {accepted}")
+    print(f"Rejected / Anomalous:  {rejected}")
+
+    print(
+        "\nNote: This is a one-class verification "
+        "prototype. The dataset does not contain "
+        "multiple subject IDs or impostor samples."
+    )
+
+
+if __name__ == "__main__":
+    main()
