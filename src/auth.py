@@ -1,67 +1,71 @@
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+from src.model import NeuroSignatureModel
 
 
 class NeuroAuthSystem:
     """
-    EEG-based neuro-signature enrollment and verification system.
+    EEG-based neuro-signature authentication system.
 
-    The system creates a reference signature from enrollment samples
-    and verifies a new sample using cosine similarity.
+    The system learns the distribution of enrolled EEG feature
+    samples and verifies whether a new sample is consistent with
+    that learned neuro-signature profile.
     """
 
-    def __init__(self, threshold=0.90):
-        self.threshold = threshold
-        self.templates = {}
+    def __init__(
+        self,
+        contamination=0.05,
+        n_estimators=200,
+        random_state=42
+    ):
+        self.model = NeuroSignatureModel(
+            n_estimators=n_estimators,
+            contamination=contamination,
+            random_state=random_state
+        )
+
+        self.enrolled = False
 
     def enroll_user(self, user_id, eeg_samples):
         """
-        Create a neuro-signature template from enrollment samples.
-
-        Parameters
-        ----------
-        user_id : str
-            Identifier for the enrolled user.
-
-        eeg_samples : array-like
-            Multiple preprocessed EEG feature vectors.
+        Enroll a user using multiple EEG feature samples.
         """
 
-        eeg_samples = np.asarray(eeg_samples, dtype=np.float64)
+        eeg_samples = np.asarray(
+            eeg_samples,
+            dtype=np.float64
+        )
 
         if eeg_samples.ndim != 2:
             raise ValueError(
                 "EEG samples must be a 2-dimensional array."
             )
 
-        if len(eeg_samples) < 2:
+        if len(eeg_samples) < 10:
             raise ValueError(
-                "At least two enrollment samples are recommended."
+                "At least 10 enrollment samples are recommended."
             )
 
-        # Average the enrollment feature vectors
-        template = np.mean(eeg_samples, axis=0)
+        self.model.train(eeg_samples)
 
-        self.templates[user_id] = template
+        self.user_id = user_id
+        self.enrolled = True
 
-        return template
+        return True
 
-    def authenticate(self, user_id, test_sample):
+    def authenticate(self, test_sample):
         """
-        Verify a test EEG feature vector against the enrolled template.
+        Verify a new EEG feature sample against the enrolled
+        neuro-signature profile.
 
-        Returns
-        -------
-        authenticated : bool
-            Whether the similarity meets the threshold.
-
-        similarity : float
-            Cosine similarity between the template and test sample.
+        Returns:
+            authenticated: True if the sample is consistent
+                           with the learned profile.
+            score: anomaly decision score.
         """
 
-        if user_id not in self.templates:
+        if not self.enrolled:
             raise ValueError(
-                f"User '{user_id}' is not enrolled."
+                "No user has been enrolled."
             )
 
         test_sample = np.asarray(
@@ -69,29 +73,18 @@ class NeuroAuthSystem:
             dtype=np.float64
         ).reshape(1, -1)
 
-        template = self.templates[user_id].reshape(1, -1)
+        prediction = self.model.predict(test_sample)[0]
+        score = self.model.decision_score(test_sample)[0]
 
-        similarity = cosine_similarity(
-            template,
-            test_sample
-        )[0][0]
+        authenticated = prediction == 1
 
-        authenticated = similarity >= self.threshold
+        return authenticated, float(score)
 
-        return authenticated, float(similarity)
+    def save(self, path):
+        """Save the trained neuro-signature model."""
+        self.model.save(path)
 
-    def set_threshold(self, threshold):
-        """
-        Update the authentication threshold.
-        """
-
-        if not 0 <= threshold <= 1:
-            raise ValueError(
-                "Threshold must be between 0 and 1."
-            )
-
-        self.threshold = threshold
-
-    def get_threshold(self):
-        """Return the current authentication threshold."""
-        return self.threshold
+    def load(self, path):
+        """Load a previously trained neuro-signature model."""
+        self.model.load(path)
+        self.enrolled = True
