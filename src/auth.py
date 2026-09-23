@@ -1,45 +1,97 @@
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
+
 class NeuroAuthSystem:
-    def __init__(self, model_path=None, threshold=0.9):
-        self.model_path = model_path
+    """
+    EEG-based neuro-signature enrollment and verification system.
+
+    The system creates a reference signature from enrollment samples
+    and verifies a new sample using cosine similarity.
+    """
+
+    def __init__(self, threshold=0.90):
         self.threshold = threshold
-        self.templates = {}  # user_id: template_features
-        
+        self.templates = {}
+
     def enroll_user(self, user_id, eeg_samples):
-        """Enroll a new user by creating a template from their EEG samples"""
-        # Average features across samples to create a template
+        """
+        Create a neuro-signature template from enrollment samples.
+
+        Parameters
+        ----------
+        user_id : str
+            Identifier for the enrolled user.
+
+        eeg_samples : array-like
+            Multiple preprocessed EEG feature vectors.
+        """
+
+        eeg_samples = np.asarray(eeg_samples, dtype=np.float64)
+
+        if eeg_samples.ndim != 2:
+            raise ValueError(
+                "EEG samples must be a 2-dimensional array."
+            )
+
+        if len(eeg_samples) < 2:
+            raise ValueError(
+                "At least two enrollment samples are recommended."
+            )
+
+        # Average the enrollment feature vectors
         template = np.mean(eeg_samples, axis=0)
+
         self.templates[user_id] = template
+
         return template
-    
+
     def authenticate(self, user_id, test_sample):
-        """Authenticate a user by comparing with stored template"""
+        """
+        Verify a test EEG feature vector against the enrolled template.
+
+        Returns
+        -------
+        authenticated : bool
+            Whether the similarity meets the threshold.
+
+        similarity : float
+            Cosine similarity between the template and test sample.
+        """
+
         if user_id not in self.templates:
-            raise ValueError(f"User {user_id} not enrolled")
-            
-        template = self.templates[user_id]
-        
-        # Calculate similarity (can use different metrics)
-        similarity = cosine_similarity([template], [test_sample])[0][0]
-        
-        return similarity >= self.threshold, similarity
-    
-    def adaptive_threshold(self, new_samples, user_id=None):
-        """Adjust threshold based on new samples"""
-        if user_id:
-            # User-specific threshold adjustment
-            template = self.templates[user_id]
-            similarities = [cosine_similarity([template], [sample])[0][0] for sample in new_samples]
-        else:
-            # Global threshold adjustment
-            similarities = []
-            for uid, template in self.templates.items():
-                for sample in new_samples:
-                    sim = cosine_similarity([template], [sample])[0][0]
-                    similarities.append(sim)
-        
-        # Set threshold to mean - 2*std of genuine scores (example)
-        self.threshold = np.mean(similarities) - 2*np.std(similarities)
+            raise ValueError(
+                f"User '{user_id}' is not enrolled."
+            )
+
+        test_sample = np.asarray(
+            test_sample,
+            dtype=np.float64
+        ).reshape(1, -1)
+
+        template = self.templates[user_id].reshape(1, -1)
+
+        similarity = cosine_similarity(
+            template,
+            test_sample
+        )[0][0]
+
+        authenticated = similarity >= self.threshold
+
+        return authenticated, float(similarity)
+
+    def set_threshold(self, threshold):
+        """
+        Update the authentication threshold.
+        """
+
+        if not 0 <= threshold <= 1:
+            raise ValueError(
+                "Threshold must be between 0 and 1."
+            )
+
+        self.threshold = threshold
+
+    def get_threshold(self):
+        """Return the current authentication threshold."""
         return self.threshold
