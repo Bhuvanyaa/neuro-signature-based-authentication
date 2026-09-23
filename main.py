@@ -1,79 +1,75 @@
-import os
+import joblib
 import numpy as np
-
-from src.preprocessing import load_eeg_features, scale_features
-from src.auth import NeuroAuthSystem
+from sklearn.ensemble import IsolationForest
 
 
-DATA_PATH = "data/raw/emotions_positive_only.csv"
+class NeuroSignatureModel:
+    """
+    One-class EEG neuro-signature model.
 
+    The model learns the distribution of available EEG feature samples
+    and identifies whether a new sample is consistent with that
+    learned neuro-signature profile.
+    """
 
-def main():
-    print("=" * 60)
-    print("Neuro-Signature-Based Authentication System")
-    print("=" * 60)
-
-    # 1. Load pre-extracted EEG features
-    if not os.path.exists(DATA_PATH):
-        raise FileNotFoundError(
-            f"Dataset not found: {DATA_PATH}"
+    def __init__(
+        self,
+        n_estimators=200,
+        contamination=0.05,
+        random_state=42
+    ):
+        self.model = IsolationForest(
+            n_estimators=n_estimators,
+            contamination=contamination,
+            random_state=random_state,
+            n_jobs=-1
         )
 
-    X, labels = load_eeg_features(DATA_PATH)
+    def train(self, X):
+        """
+        Train the one-class neuro-signature model.
+        """
 
-    print(f"\nDataset samples: {X.shape[0]}")
-    print(f"EEG feature count: {X.shape[1]}")
-    print(f"Labels: {np.unique(labels)}")
+        X = np.asarray(X, dtype=np.float64)
 
-    # 2. Scale EEG features
-    X_scaled, scaler = scale_features(X)
+        if X.ndim != 2:
+            raise ValueError(
+                "Input features must be a 2-dimensional array."
+            )
 
-    print("Feature preprocessing completed.")
+        self.model.fit(X)
 
-    # 3. Create authentication system
-    auth_system = NeuroAuthSystem(threshold=0.90)
+        return self
 
-    # 4. Use part of the available samples for enrollment
-    enrollment_size = int(len(X_scaled) * 0.8)
+    def predict(self, X):
+        """
+        Predict whether samples belong to the learned EEG profile.
 
-    enrollment_samples = X_scaled[:enrollment_size]
-    test_samples = X_scaled[enrollment_size:]
+        Returns:
+            1  -> accepted / in-distribution
+           -1  -> rejected / anomalous
+        """
 
-    # 5. Enroll the reference neuro-signature
-    user_id = "user_001"
+        X = np.asarray(X, dtype=np.float64)
 
-    auth_system.enroll_user(
-        user_id,
-        enrollment_samples
-    )
+        return self.model.predict(X)
 
-    print(
-        f"\nUser '{user_id}' enrolled successfully."
-    )
+    def decision_score(self, X):
+        """
+        Return anomaly decision scores.
 
-    # 6. Verify test samples
-    print("\nAuthentication Results")
-    print("-" * 40)
+        Higher values indicate samples that are more consistent
+        with the learned training distribution.
+        """
 
-    for index, sample in enumerate(test_samples[:5], start=1):
+        X = np.asarray(X, dtype=np.float64)
 
-        authenticated, similarity = auth_system.authenticate(
-            user_id,
-            sample
-        )
+        return self.model.decision_function(X)
 
-        status = (
-            "AUTHENTICATED"
-            if authenticated
-            else "REJECTED"
-        )
+    def save(self, path):
+        """Save the trained model."""
+        joblib.dump(self.model, path)
 
-        print(
-            f"Test Sample {index}: "
-            f"{status} | "
-            f"Similarity: {similarity:.4f}"
-        )
-
-
-if __name__ == "__main__":
-    main()
+    def load(self, path):
+        """Load a trained model."""
+        self.model = joblib.load(path)
